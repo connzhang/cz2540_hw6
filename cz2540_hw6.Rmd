@@ -1,0 +1,73 @@
+---
+title: "Homework 6"
+author: "Connie Zhang"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(modelr)
+library(mgcv)
+```
+
+## Question 1
+```{r - Question 1 - data cleaning}
+birth_data = read_csv("./data/birthweight.csv") %>% 
+janitor::clean_names() %>%
+mutate (
+  babysex = recode(babysex, "1" = "male", "2" = "female"),
+  frace = recode(frace,
+                        "1" = "white",
+                        "2" = "black",
+                        "3" = "asian",
+                        "4" = "puetro rican",
+                        "8" = "other",
+                        "9" = "unknown"),
+         mrace = recode(mrace,
+                        "1" = "white",
+                        "2" = "black",
+                        "3" = "asian",
+                        "4" = "puetro rican",
+                        "8" = "other"),
+           malform = recode(malform, 
+                          "0" = "absent",
+                          "1" = "present"
+                          )) 
+birth_data
+
+
+#checking for missing values 
+sum(!complete.cases(birth_data))
+
+```
+
+* There are no missing values in the data, as shown by the `0` value output. 
+
+```{r - regression modeling}
+birthmodel_fit = lm(bwt ~ 
+                      gaweeks + 
+                      delwt + 
+                      fincome + 
+                      smoken, 
+                    data = birth_data) 
+
+summary(birthmodel_fit) 
+```
+
+* These variables were chosen as well-known and regarded predictors of birthweight for newborns, incluidng both biological,, health, and socioeconomic factors. 
+
+```{r - fitted vs residual}
+birth_data %>%
+  
+  modelr::add_residuals(birthmodel_fit) %>%
+  modelr::add_predictions(birthmodel_fit) %>%
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "green") + 
+  labs(
+        title = "Residuals vs. Predicted Values on a Hypothesized Model")
+
+```
+
+* The majority of residuals fall around the value of 0 and show constant variance. A few show as extremely high or low residuals, which could be outliers or data entry errors.  
