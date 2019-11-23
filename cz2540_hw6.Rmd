@@ -33,7 +33,7 @@ mutate (
            malform = recode(malform, 
                           "0" = "absent",
                           "1" = "present"
-                          )) 
+                          ))  
 birth_data
 
 
@@ -48,14 +48,16 @@ sum(!complete.cases(birth_data))
 birthmodel_fit = lm(bwt ~ 
                       gaweeks + 
                       delwt + 
-                      fincome + 
+                      fincome +
+                      bhead +
+                      blength +
                       smoken, 
                     data = birth_data) 
 
 summary(birthmodel_fit) 
 ```
 
-* These variables were chosen as well-known and regarded predictors of birthweight for newborns, incluidng both biological,, health, and socioeconomic factors. 
+* These variables were chosen as well-known and regarded predictors of birthweight for newborns, including both biological,, health, and socioeconomic factors. 
 
 ```{r - fitted vs residual}
 birth_data %>%
@@ -63,11 +65,64 @@ birth_data %>%
   modelr::add_residuals(birthmodel_fit) %>%
   modelr::add_predictions(birthmodel_fit) %>%
   ggplot(aes(x = pred, y = resid)) +
-  geom_point() +
-  geom_hline(yintercept = 0, color = "green") + 
+  geom_point() + geom_hline(yintercept = 0, linetype = "dashed", color = "blue") 
   labs(
         title = "Residuals vs. Predicted Values on a Hypothesized Model")
 
 ```
 
-* The majority of residuals fall around the value of 0 and show constant variance. A few show as extremely high or low residuals, which could be outliers or data entry errors.  
+* The majority of residuals fall around the value of 0 and show constant variance. A few are shown as extremely high or low residuals, which could be outliers or data entry errors.  
+
+```{r - comparison models}
+model_2 = lm(bwt ~ blength + gaweeks, data = birth_data) 
+
+model_3 = lm(bwt ~ bhead + babysex + blength + bhead * babysex * blength, data = birth_data) 
+```
+
+```{r}
+comp_data = 
+  crossv_mc(birth_data, 100) %>%
+
+  mutate(train = map(train, as_tibble),
+         test = map(test, as_tibble)) 
+
+comp_data = 
+  comp_data %>% 
+  mutate(newbirthmodel_fit  = map(train, ~lm(bwt ~ 
+                      gaweeks + 
+                      delwt + 
+                      fincome + 
+                      bhead + 
+                      blength +
+                      smoken, data = .x)),
+         new_model_2    = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         new_model_3  = map(train, ~gam(bwt ~ bhead + babysex + blength + bhead * babysex * blength, data = as_tibble(.x)))) %>% 
+  
+  mutate(rmse_birthmodel = map2_dbl(newbirthmodel_fit, test, ~rmse(model = .x, data = .y)),
+         rmse_model_2    = map2_dbl(new_model_2, test, ~rmse(model = .x, data = .y)),
+         rmse_model_3 = map2_dbl(new_model_3, test, ~rmse(model = .x, data = .y))) 
+```
+
+```{r}
+comp_data %>%
+select(starts_with("rmse")) %>% 
+  pivot_longer(
+      everything(),
+      names_to = "model", 
+      values_to = "rmse",
+      names_prefix = "rmse_") %>% 
+    mutate(model = fct_inorder(model)) %>% 
+    ggplot(aes(x = model, y = rmse, fill = model)) +
+  geom_violin() + 
+   scale_x_discrete(labels=c("birthmodel" = "Initial", 
+                            "model_2" = "Comparison 2 ",
+                            "model_3" = "Comparison 3")) +
+  labs(
+    title = "Distribution of Prediction Error Across Models",
+    x = "Model",
+    y = "RMSE"
+  )
+
+```
+
+* Through comparison across models, the initial model created (including gestational age, delivery weight of mother, financial income of mother, baby's length and head size, as well as number of cigarettes smoked) has the lowest RMSE. This indicates that it is the strongest model.
