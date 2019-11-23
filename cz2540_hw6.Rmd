@@ -9,6 +9,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(modelr)
 library(mgcv)
+library(p8105.datasets)
+library(patchwork)
 ```
 
 ## Question 1
@@ -57,14 +59,14 @@ birthmodel_fit = lm(bwt ~
 summary(birthmodel_fit) 
 ```
 
-* These variables were chosen as well-known and regarded predictors of birthweight for newborns, including both biological, health, and socioeconomic factors. 
+* These variables were chosen as well-known and regarded predictors of birthweight for newborns, including both biological, lifestyle, and socioeconomic factors. 
 ```{r - fitted vs residual}
 birth_data %>%
   
   modelr::add_residuals(birthmodel_fit) %>%
   modelr::add_predictions(birthmodel_fit) %>%
   ggplot(aes(x = pred, y = resid)) +
-  geom_point() + geom_hline(yintercept = 0, linetype = "dashed", color = "blue") 
+  geom_point() + geom_hline(yintercept = 0, color = "blue") 
   labs(
         title = "Residuals vs. Predicted Values on a Hypothesized Model")
 
@@ -124,4 +126,78 @@ select(starts_with("rmse")) %>%
 
 ```
 
-* Through comparison across models, the initial model created (including gestational age, delivery weight of mother, financial income of mother, baby's length and head size, as well as number of cigarettes smoked) has the lowest RMSE. This indicates that it is the strongest model.
+* Through comparison across models, the initial model created (including gestational age, delivery weight of mother, financial income of mother, baby's length and head size, as well as number of cigarettes smoked by mother) has the lowest RMSE. This indicates that it is the strongest model.
+
+
+## Question 2
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+```{r}
+#for each bootstrap sample, produce estimates of these two quantities
+boot_straps = 
+  data_frame(
+    strap_number = 1:5000,
+    strap_sample = rerun(5000, sample_frac(weather_df, replace = TRUE)))
+
+ bootstrap_results = 
+  boot_straps %>% 
+  mutate(
+    models = map(strap_sample, ~lm(tmax ~ tmin, data = .x)),
+    results_r = map(models, broom::glance),
+    results_estimate = map(models, broom::tidy)) %>% 
+  select(-strap_sample, -models) %>% 
+  unnest() %>%
+  select(strap_number, r.squared, term, estimate) %>%
+  pivot_wider(
+    names_from = "term",
+    values_from = "estimate"
+  ) %>%
+  janitor::clean_names() %>%
+  mutate(log_betaest = log(intercept * tmin)) 
+ 
+bootstrap_results %>%
+  summarise("r_square" = mean(r_squared),
+  "log(b0 *b1)" = mean(log_betaest)) %>%
+  knitr::kable(digits = 3)
+   
+```
+
+```{r - plot distribution}
+#plotting the distribution of estimates
+distribution_1 = ggplot(data = bootstrap_results, aes(x = r_squared)) +
+  geom_histogram() +
+  labs(title = "R-squared Estimates",x = "r squared estimates",
+    y = "count")
+
+distribution_2 = ggplot(data = bootstrap_results, aes(x = log_betaest)) +
+  geom_histogram() +
+  labs(title = "Log Product Coefficient Estimates",x = "log estimates",
+    y = "count")
+
+distribution_1 + distribution_2
+```
+
+* For the distribution of r-squared estimates, approximately ~88% to ~93% of the variance can be explained in the model. We can interpret this as each bootstrap model explains 88%-93% of the variability in birthweight as an outcome. The product of log estimates behave similarly with a fairly normal distribution in the range of values. 
+
+```{r}
+#identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r-squared
+quantile(pull(bootstrap_results, r_squared), probs = c(0.025, 0.975))
+```
+
+```{r}
+#identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for log(b1-b0) 
+quantile(pull(bootstrap_results, log_betaest), probs = c(0.025, 0.975))
+```
