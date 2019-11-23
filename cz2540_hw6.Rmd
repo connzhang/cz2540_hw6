@@ -57,8 +57,7 @@ birthmodel_fit = lm(bwt ~
 summary(birthmodel_fit) 
 ```
 
-* These variables were chosen as well-known and regarded predictors of birthweight for newborns, including both biological,, health, and socioeconomic factors. 
-
+* These variables were chosen as well-known and regarded predictors of birthweight for newborns, including both biological, health, and socioeconomic factors. 
 ```{r - fitted vs residual}
 birth_data %>%
   
